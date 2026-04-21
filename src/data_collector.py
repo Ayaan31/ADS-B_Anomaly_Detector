@@ -2,18 +2,21 @@
 Data collection module for ADS-B data via OpenSky Network.
 
 Provides two approaches:
-  1. REST API  – live snapshots (no auth needed, limited history)
-  2. traffic / pyopensky – historical queries (requires OpenSky account)
+  1. REST API  - live snapshots (no auth needed, limited history)
+  2. traffic / pyopensky - historical queries (requires OpenSky account)
 """
 
 import logging
 import os
 import time
 import types
+import sys
+import pyopensky
 from configparser import ConfigParser
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
 
 import pandas as pd
 import requests
@@ -22,7 +25,7 @@ from src.config import MIDDLE_EAST_BBOX, RAW_DIR, REGIONS
 
 logger = logging.getLogger(__name__)
 
-# ── Column names returned by the OpenSky REST API ───────────────────
+# Column names returned by the OpenSky REST API
 STATE_COLUMNS = [
     "icao24", "callsign", "origin_country", "time_position", "last_contact",
     "longitude", "latitude", "baro_altitude", "on_ground", "velocity",
@@ -31,10 +34,7 @@ STATE_COLUMNS = [
 ]
 
 
-def resolve_opensky_credentials(
-    username: Optional[str] = None,
-    password: Optional[str] = None,
-) -> Optional[tuple[str, str]]:
+def resolve_opensky_credentials(username: Optional[str] = None, password: Optional[str] = None) -> Optional[tuple[str, str]]:
     """
     Resolve OpenSky credentials from CLI args first, then environment variables.
 
@@ -63,15 +63,9 @@ def resolve_opensky_credentials(
     return None
 
 
-def ensure_traffic_config_credentials(
-    username: str,
-    password: str,
-    overwrite: bool = False,
-) -> Path:
+def ensure_traffic_config_credentials(username: str, password: str, overwrite: bool = False) -> Path:
     """
     Ensure traffic config has OpenSky credentials for historical Trino queries.
-
-    Writes to: ~/.config/traffic/traffic.conf
     """
     config_path = Path.home() / ".config" / "traffic" / "traffic.conf"
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -96,13 +90,7 @@ def ensure_traffic_config_credentials(
     return config_path
 
 
-# ─────────────────────────────────────────────────────────────────────
-# 1.  REST API collector (live snapshots)
-# ─────────────────────────────────────────────────────────────────────
-def fetch_live_states(
-    bbox: Optional[dict] = None,
-    auth: Optional[tuple] = None,
-) -> pd.DataFrame:
+def fetch_live_states(bbox: Optional[dict] = None, auth: Optional[tuple] = None) -> pd.DataFrame:
     """
     Fetch current aircraft states from the OpenSky REST API.
 
@@ -143,12 +131,7 @@ def fetch_live_states(
     return df
 
 
-def collect_live_snapshots(
-    n_snapshots: int = 10,
-    interval_sec: int = 10,
-    bbox: Optional[dict] = None,
-    auth: Optional[tuple] = None,
-) -> pd.DataFrame:
+def collect_live_snapshots(n_snapshots: int = 10, interval_sec: int = 10, bbox: Optional[dict] = None, auth: Optional[tuple] = None) -> pd.DataFrame:
     """
     Collect multiple consecutive live snapshots and concatenate them.
     Useful for building short-term trajectory segments from the REST API.
@@ -169,16 +152,7 @@ def collect_live_snapshots(
     return pd.concat(frames, ignore_index=True)
 
 
-# ─────────────────────────────────────────────────────────────────────
-# 2.  Historical data via the `traffic` library
-# ─────────────────────────────────────────────────────────────────────
-def fetch_historical_traffic(
-    start: str,
-    stop: str,
-    region: str = "middle_east",
-    bounds: Optional[dict] = None,
-    auth: Optional[tuple[str, str]] = None,
-):
+def fetch_historical_traffic(start: str, stop: str, region: str = "middle_east", bounds: Optional[dict] = None, auth: Optional[tuple[str, str]] = None):
     """
     Fetch historical ADS-B data using the traffic library (backed by pyopensky).
 
@@ -203,13 +177,8 @@ def fetch_historical_traffic(
         "Querying OpenSky historical data: %s → %s  [%s]", start, stop, region
     )
 
-    # First try via traffic (legacy path in many examples).
     try:
-        # Compatibility shim: traffic<=2.10 imports `impala` from pyopensky,
-        # but pyopensky>=2.16 removed that module. Inject a no-op module so
-        # Trino-based queries can still initialize.
-        import sys
-        import pyopensky
+
 
         if not hasattr(pyopensky, "impala"):
             impala_module = types.ModuleType("pyopensky.impala")
@@ -291,9 +260,6 @@ def traffic_to_dataframe(traffic_obj) -> pd.DataFrame:
     return df
 
 
-# ─────────────────────────────────────────────────────────────────────
-# 3.  Persistence helpers
-# ─────────────────────────────────────────────────────────────────────
 def save_raw(df: pd.DataFrame, tag: str = "snapshot") -> str:
     """Save a raw DataFrame to the data/raw directory as Parquet."""
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")

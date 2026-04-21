@@ -1,5 +1,5 @@
 """
-ADS-B Anomaly Detector – Main Pipeline
+ADS-B Anomaly Detector - Main Pipeline
 =======================================
 Collect ADS-B data from OpenSky, engineer features, run K-means clustering,
 and produce visualisations (geographic scatter + Voronoi diagram).
@@ -60,7 +60,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ── Data ingestion ──────────────────────────────────────────────────
 def ingest(args) -> pd.DataFrame:
     """Return a raw DataFrame based on the chosen mode."""
     credentials = resolve_opensky_credentials(
@@ -111,9 +110,7 @@ def ingest(args) -> pd.DataFrame:
         sys.exit(1)
 
 
-# ── Main pipeline ───────────────────────────────────────────────────
 def run_pipeline(args):
-    # 1. Ingest raw ADS-B data
     raw_df = ingest(args)
     if raw_df.empty:
         logger.error("No data available. Exiting.")
@@ -121,51 +118,41 @@ def run_pipeline(args):
 
     logger.info("Raw data: %d rows, %d columns.", *raw_df.shape)
 
-    # 2. Feature engineering
     obs_df = compute_observation_features(raw_df)
     obs_df = flag_anomalies(obs_df)
     flight_df = aggregate_flight_features(obs_df)
     logger.info("Flight-level features: %d flights.", len(flight_df))
 
-    # Save processed data
-    flight_df.to_parquet(PROCESSED_DIR / "flight_features.parquet", index=False)
+    flight_df.to_parquet(PROCESSED_DIR / "flight_features.parquet", index = False)
 
-    # 3. K-means clustering
     X_scaled, scaler = prepare_features(flight_df)
 
-    # 3a. Find optimal K
-    k_results = find_optimal_k(X_scaled, k_range=range(2, min(11, len(flight_df))))
+    k_results = find_optimal_k(X_scaled, k_range = range(2, min(11, len(flight_df))))
     plot_elbow_silhouette(k_results)
 
-    # 3b. Use best silhouette K (or user override)
     best_k = args.k if args.k else k_results["k"][
-        max(range(len(k_results["silhouette"])), key=lambda i: k_results["silhouette"][i])
+        max(range(len(k_results["silhouette"])), key = lambda i: k_results["silhouette"][i])
     ]
     logger.info("Selected K = %d", best_k)
 
-    km, labels = run_kmeans(X_scaled, k=best_k)
+    km, labels = run_kmeans(X_scaled, k = best_k)
     anomaly_distances = score_anomalies_kmeans(X_scaled, km, labels)
 
     flight_df["cluster"] = labels
     flight_df["anomaly_distance"] = anomaly_distances
 
-    # 3c. Complementary models
     flight_df["dbscan_label"] = run_dbscan(X_scaled)
     flight_df["iforest_label"] = run_isolation_forest(X_scaled)
 
-    # Save enriched data
-    flight_df.to_parquet(PROCESSED_DIR / "flight_results.parquet", index=False)
+    flight_df.to_parquet(PROCESSED_DIR / "flight_results.parquet", index = False)
 
-    # 4. Save model
-    save_model(km, scaler, tag="kmeans")
+    save_model(km, scaler, tag = "kmeans")
 
-    # 5. Visualisations
     plot_clusters(X_scaled, labels, anomaly_distances)
     plot_geographic(flight_df)
     plot_voronoi(flight_df)
     close_all()
 
-    # 6. Summary
     top_anomalies = flight_df.nlargest(10, "anomaly_distance")
     print("\n" + "=" * 70)
     print("  TOP-10 MOST ANOMALOUS FLIGHTS (by K-means distance)")
@@ -174,48 +161,41 @@ def run_pipeline(args):
         top_anomalies[
             ["icao24", "cluster", "anomaly_distance", "total_anomaly_flags",
              "mean_latitude", "mean_longitude"]
-        ].to_string(index=False)
+        ].to_string(index = False)
     )
     print("=" * 70)
     print(f"\nOutputs saved to: {PROCESSED_DIR.parent.parent / 'output'}")
 
-
-# ── CLI ─────────────────────────────────────────────────────────────
 def parse_args():
-    p = argparse.ArgumentParser(description="ADS-B Anomaly Detector")
+    p = argparse.ArgumentParser(description = "ADS-B Anomaly Detector")
     p.add_argument(
-        "--mode", choices=["live", "historical", "file"], default="live",
-        help="Data source mode (default: live)",
+        "--mode", choices = ["live", "historical", "file"], default = "live",
+        help = "Data source mode (default: live)",
     )
-    # Live mode options
-    p.add_argument("--snapshots", type=int, default=5, help="Number of live snapshots")
-    p.add_argument("--interval", type=int, default=15, help="Seconds between snapshots")
-    # Historical mode options
-    p.add_argument("--start", type=str, help="Start datetime (ISO)")
-    p.add_argument("--stop", type=str, help="Stop datetime (ISO)")
-    p.add_argument("--region", type=str, default="middle_east", help="Region key")
-    # File mode
-    p.add_argument("--file", type=str, help="Path to raw parquet file")
-    # Credentials
+    p.add_argument("--snapshots", type = int, default = 5, help = "Number of live snapshots")
+    p.add_argument("--interval", type = int, default = 15, help = "Seconds between snapshots")
+    p.add_argument("--start", type = str, help = "Start datetime (ISO)")
+    p.add_argument("--stop", type = str, help = "Stop datetime (ISO)")
+    p.add_argument("--region", type = str, default = "middle_east", help = "Region key")
+    p.add_argument("--file", type = str, help = "Path to raw parquet file")
     p.add_argument(
         "--opensky-username",
-        type=str,
-        default=None,
-        help="OpenSky username (or set OPENSKY_USERNAME)",
+        type = str,
+        default = None,
+        help = "OpenSky username (or set OPENSKY_USERNAME)",
     )
     p.add_argument(
         "--opensky-password",
-        type=str,
-        default=None,
-        help="OpenSky password (or set OPENSKY_PASSWORD)",
+        type = str,
+        default = None,
+        help = "OpenSky password (or set OPENSKY_PASSWORD)",
     )
     p.add_argument(
         "--overwrite-traffic-credentials",
-        action="store_true",
-        help="Overwrite existing credentials in traffic.conf",
+        action = "store_true",
+        help = "Overwrite existing credentials in traffic.conf",
     )
-    # Clustering
-    p.add_argument("--k", type=int, default=0, help="Force K (0 = auto-select)")
+    p.add_argument("--k", type = int, default = 0, help = "Force K (0 = auto-select)")
     return p.parse_args()
 
 

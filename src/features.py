@@ -25,7 +25,6 @@ from src.config import (
 logger = logging.getLogger(__name__)
 
 
-# ── Helpers ─────────────────────────────────────────────────────────
 def _haversine(lat1, lon1, lat2, lon2):
     """Vectorised haversine distance in metres."""
     R = 6_371_000  # Earth radius in metres
@@ -43,7 +42,6 @@ def _angle_diff(a, b):
     return np.mod(a_arr - b_arr + 180.0, 360.0) - 180.0
 
 
-# ── Per-observation features (row-level within each flight) ─────────
 def compute_observation_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add per-observation columns computed from consecutive ADS-B reports
@@ -110,7 +108,6 @@ def compute_observation_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ── Anomaly flag columns (rule-based pre-labels) ───────────────────
 def flag_anomalies(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add boolean flag columns for observations that exceed physical limits.
@@ -154,7 +151,6 @@ def flag_anomalies(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ── Per-flight aggregation (for clustering) ─────────────────────────
 def aggregate_flight_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Aggregate observation-level features into a single feature vector

@@ -22,7 +22,7 @@ from src.config import DEFAULT_K, MODELS_DIR, RANDOM_STATE
 
 logger = logging.getLogger(__name__)
 
-# Features used for clustering (adjust as needed)
+# Features used for clustering
 CLUSTER_FEATURES = [
     "mean_velocity",
     "std_velocity",
@@ -45,8 +45,6 @@ CLUSTER_FEATURES = [
     "pct_flagged",
 ]
 
-
-# ── Preprocessing ───────────────────────────────────────────────────
 def prepare_features(
     flight_df: pd.DataFrame,
     features: Optional[list] = None,
@@ -61,12 +59,10 @@ def prepare_features(
 
     scaler = StandardScaler()
     X_scaled = pd.DataFrame(
-        scaler.fit_transform(X), columns=features, index=X.index
+        scaler.fit_transform(X), columns = features, index = X.index
     )
     return X_scaled, scaler
 
-
-# ── K-means with automatic K selection ──────────────────────────────
 def find_optimal_k(
     X_scaled: pd.DataFrame,
     k_range: range = range(2, 11),
@@ -77,7 +73,7 @@ def find_optimal_k(
     results = {"k": [], "inertia": [], "silhouette": []}
 
     for k in k_range:
-        km = KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=10)
+        km = KMeans(n_clusters = k, random_state = RANDOM_STATE, n_init = 10)
         labels = km.fit_predict(X_scaled)
         sil = silhouette_score(X_scaled, labels) if k > 1 else 0.0
         results["k"].append(k)
@@ -87,7 +83,6 @@ def find_optimal_k(
 
     return results
 
-
 def run_kmeans(
     X_scaled: pd.DataFrame,
     k: int = DEFAULT_K,
@@ -95,11 +90,10 @@ def run_kmeans(
     """
     Fit K-means and return the model + cluster labels.
     """
-    km = KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=10)
+    km = KMeans(n_clusters = k, random_state = RANDOM_STATE, n_init = 10)
     labels = km.fit_predict(X_scaled)
     logger.info("K-means (k=%d): silhouette=%.4f", k, silhouette_score(X_scaled, labels))
     return km, labels
-
 
 def score_anomalies_kmeans(
     X_scaled: pd.DataFrame,
@@ -114,8 +108,6 @@ def score_anomalies_kmeans(
     distances = np.linalg.norm(X_scaled.values - centres[labels], axis=1)
     return distances
 
-
-# ── DBSCAN ──────────────────
 def run_dbscan(
     X_scaled: pd.DataFrame,
     eps: float = 1.5,
@@ -124,15 +116,13 @@ def run_dbscan(
     """
     Run DBSCAN. Points labelled -1 are noise / anomalies.
     """
-    db = DBSCAN(eps=eps, min_samples=min_samples)
+    db = DBSCAN(eps = eps, min_samples = min_samples)
     labels = db.fit_predict(X_scaled)
     n_clusters = len(set(labels) - {-1})
     n_noise = (labels == -1).sum()
     logger.info("DBSCAN: %d clusters, %d noise points.", n_clusters, n_noise)
     return labels
 
-
-# ── Isolation Forest ───────────────────────────────
 def run_isolation_forest(
     X_scaled: pd.DataFrame,
     contamination: float = 0.05,
@@ -141,23 +131,20 @@ def run_isolation_forest(
     Run Isolation Forest. Returns array of -1 (anomaly) / 1 (normal).
     """
     iso = IsolationForest(
-        contamination=contamination,
-        random_state=RANDOM_STATE,
-        n_estimators=200,
+        contamination = contamination,
+        random_state = RANDOM_STATE,
+        n_estimators = 200,
     )
     preds = iso.fit_predict(X_scaled)
     n_anomalies = (preds == -1).sum()
     logger.info("Isolation Forest: %d anomalies detected.", n_anomalies)
     return preds
 
-
-# ── Persistence ─────────────────────────────────────────────────────
 def save_model(model, scaler: StandardScaler, tag: str = "kmeans"):
     """Save model and scaler to disk."""
     joblib.dump(model, MODELS_DIR / f"{tag}_model.pkl")
     joblib.dump(scaler, MODELS_DIR / f"{tag}_scaler.pkl")
     logger.info("Saved model → %s", MODELS_DIR / f"{tag}_model.pkl")
-
 
 def load_model(tag: str = "kmeans"):
     """Load model and scaler from disk."""
