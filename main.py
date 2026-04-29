@@ -69,9 +69,12 @@ def ingest(args) -> pd.DataFrame:
 
     if args.mode == "live":
         logger.info("Collecting %d live snapshots …", args.snapshots)
+        from src.config import REGIONS, MIDDLE_EAST_BBOX
+        bbox = REGIONS.get(args.region, MIDDLE_EAST_BBOX)
         df = collect_live_snapshots(
             n_snapshots=args.snapshots,
             interval_sec=args.interval,
+            bbox=bbox,
             auth=credentials,
         )
         if not df.empty:
@@ -128,11 +131,14 @@ def run_pipeline(args):
     X_scaled, scaler = prepare_features(flight_df)
 
     k_results = find_optimal_k(X_scaled, k_range = range(2, min(11, len(flight_df))))
-    plot_elbow_silhouette(k_results)
+    if k_results["k"]:
+        plot_elbow_silhouette(k_results)
+        best_k = args.k if args.k else k_results["k"][
+            max(range(len(k_results["silhouette"])), key = lambda i: k_results["silhouette"][i])
+        ]
+    else:
+        best_k = args.k if args.k else 1
 
-    best_k = args.k if args.k else k_results["k"][
-        max(range(len(k_results["silhouette"])), key = lambda i: k_results["silhouette"][i])
-    ]
     logger.info("Selected K = %d", best_k)
 
     km, labels = run_kmeans(X_scaled, k = best_k)

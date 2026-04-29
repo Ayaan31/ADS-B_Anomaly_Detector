@@ -92,7 +92,8 @@ def run_kmeans(
     """
     km = KMeans(n_clusters = k, random_state = RANDOM_STATE, n_init = 10)
     labels = km.fit_predict(X_scaled)
-    logger.info("K-means (k=%d): silhouette=%.4f", k, silhouette_score(X_scaled, labels))
+    sil = silhouette_score(X_scaled, labels) if len(set(labels)) > 1 else 0.0
+    logger.info("K-means (k=%d): silhouette=%.4f", k, sil)
     return km, labels
 
 def score_anomalies_kmeans(
